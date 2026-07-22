@@ -1,0 +1,8 @@
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: yarp-lb-lab-redis
+    # Map ra cong 6380 cho khop connection string local (127.0.0.1:6380).
+    ports:
+      - "6380:6379"
+    restart: unless-stopped

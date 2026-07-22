@@ -1,0 +1,20 @@
+{
+  "profiles": {
+    "node1": {
+      "commandName": "Project",
+      "applicationUrl": "http://localhost:5001",
+      "environmentVariables": {
+        "NodeName": "node1",
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    },
+    "node2": {
+      "commandName": "Project",
+      "applicationUrl": "http://localhost:5002",
+      "environmentVariables": {
+        "NodeName": "node2",
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    }
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "profiles": {
+    "lb": {
+      "commandName": "Project",
+      "applicationUrl": "http://localhost:5266",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    }
+  }
+}

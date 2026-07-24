@@ -1,9 +1,11 @@
 #Requires -RunAsAdministrator
 # ============================================================================
 # Deploy CHI LB (yarp-lb) len IIS, tro toi node o DIA CHI BAT KY (co the may khac).
+# LB agnostic: khong phu thuoc backend la demo lab hay app publish ngoai.
 # Dung cho SCENARIO 3: node1/node2 o server 199.30.30.91, LB o may nay (local).
 #   Vd (chay TREN MAY LOCAL):
 #     setup-lb.ps1 -Node1 http://199.30.30.91:5001/ -Node2 http://199.30.30.91:5002/
+#   App publish ngoai (khong biet co share state): them -Mode Affinity
 #
 # Dia chi node duoc truyen qua ENV VAR, GHI DE len appsettings.json (KHONG sua file JSONC):
 #   .NET config dung '__' lam dau phan cap va env var LUON ghi de gia tri trong appsettings.json.
@@ -14,6 +16,8 @@
 param(
     [string]$Node1 = "http://127.0.0.1:5001/",
     [string]$Node2 = "http://127.0.0.1:5002/",
+    [ValidateSet("Stateless","Affinity")]
+    [string]$Mode = "Stateless",    # App ngoai: khuyen nghi Affinity
     [string]$EnvName = "Production",
     [int]$HttpPort = 5266,
     [switch]$Https,                 # self-signed localhost (test nhanh tren may local)
@@ -57,13 +61,17 @@ function New-AppSite {
 # Key ghi de destination cua YARP (khop ten cluster 'demo' + node1/node2 trong appsettings.json).
 $env1 = "ReverseProxy__Clusters__demo__Destinations__node1__Address"
 $env2 = "ReverseProxy__Clusters__demo__Destinations__node2__Address"
-$envVars = @{ ASPNETCORE_ENVIRONMENT = $EnvName }
+$envVars = @{
+    ASPNETCORE_ENVIRONMENT = $EnvName
+    LoadBalancer__Mode     = $Mode
+}
 $envVars[$env1] = $Node1
 $envVars[$env2] = $Node2
 
 Write-Host ">> Tao site yarp-lb, tro toi:"
 Write-Host "     node1 = $Node1"
 Write-Host "     node2 = $Node2"
+Write-Host "     Mode  = $Mode"
 New-AppSite -Name "yarp-lb" -Ip "*" -Port $HttpPort -PhysicalPath $lbDir -EnvVars $envVars
 
 # Binding 127.0.0.1 cho LB de 'localhost' luon match dung site (tranh http.sys 400 Invalid Hostname).
@@ -91,5 +99,8 @@ if ($OpenFirewall) {
 iisreset /noforce | Out-Null
 Write-Host ""
 Write-Host ">> Xong. LB: http://localhost:$HttpPort  (hoac http://<IP-may-nay>:$HttpPort tu may khac)"
-Write-Host "   Xem header 'X-Served-By' de biet request duoc day vao node nao."
+Write-Host "   Mode: $Mode | Xem header 'X-Served-By' de biet request duoc day vao node nao."
+if ($Mode -eq "Stateless") {
+    Write-Host "   App publish ngoai (chua share state): nen chay lai voi -Mode Affinity."
+}
 Write-Host "   Luu y: LB (o may nay) phai 'voi toi' duoc $Node1 / $Node2 (mo firewall/Security Group phia node)."

@@ -19,9 +19,17 @@ $isAdmin   = $principal.IsInRole([Security.Principal.WindowsBuiltinRole]::Admini
 
 if (-not $isAdmin) {
     Write-Host ">> Can quyen Administrator, dang xin UAC..." -ForegroundColor Yellow
-    $selfArgs = @('-NoProfile','-ExecutionPolicy','Bypass','-File',$PSCommandPath,$Script) + $args
+    # Quote moi arg (path co space) truoc khi Start-Process.
+    $quote = {
+        param([string]$a)
+        if ($null -eq $a) { return '""' }
+        if ($a -match '[\s"]') { return '"' + ($a.Replace('"','\"')) + '"' }
+        return $a
+    }
+    $parts = @('-NoProfile','-ExecutionPolicy','Bypass','-File',(& $quote $PSCommandPath),(& $quote $Script))
+    foreach ($a in $args) { $parts += (& $quote ([string]$a)) }
     try {
-        Start-Process powershell -Verb RunAs -ArgumentList $selfArgs
+        Start-Process powershell -Verb RunAs -ArgumentList ($parts -join ' ')
     } catch {
         Write-Host ">> Khong the elevate (co the ban da huy UAC): $($_.Exception.Message)" -ForegroundColor Red
         Read-Host ">> Nhan Enter de dong"

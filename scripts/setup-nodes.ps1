@@ -5,11 +5,15 @@
 #   - Chay script nay TREN SERVER 199.30.30.91.
 #   - Mac dinh bind '*' + -OpenFirewall de LB o may ngoai goi toi duoc.
 # (Neu muon tat ca chung 1 may = scenario 1, cu dung menu 3 setup-iis-server.ps1.)
+#
+# -AppPath: tro ca 2 node vao 1 folder publish NGOAI lab (vd D:\Publish\ClientPaymentPortal).
+#   Khi co AppPath thi bo qua -BackendVariant (khong lien quan Redis demo).
 # ============================================================================
 [CmdletBinding()]
 param(
     [ValidateSet("redis","inmemory","login-redis","login-inmemory")]
     [string]$BackendVariant = "redis",
+    [string]$AppPath = "",           # Folder publish app that (dung chung cho node1+node2)
     [string]$EnvName = "Production",
     [string]$Bind = "*",          # "*" = cho may khac goi toi (scenario 3). "127.0.0.1" = chi noi bo.
     [int]$Port1 = 5001,
@@ -21,18 +25,34 @@ Import-Module WebAdministration
 
 $root = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $pub  = Join-Path $root "publish"
-$backendDir = switch ($BackendVariant) {
-    "redis"          { Join-Path $pub "backend-redis" }
-    "inmemory"       { Join-Path $pub "backend-inmemory" }
-    "login-redis"    { Join-Path $pub "backend-login-redis" }
-    "login-inmemory" { Join-Path $pub "backend-login-inmemory" }
-}
-if (-not (Test-Path $backendDir)) {
-    throw "Chua publish (thieu '$backendDir'). Chay menu 1 (publish.ps1) truoc."
+$useExternal = -not [string]::IsNullOrWhiteSpace($AppPath)
+
+if ($useExternal) {
+    if (-not (Test-Path -LiteralPath $AppPath)) {
+        throw "AppPath khong ton tai: '$AppPath'."
+    }
+    $backendDir = (Resolve-Path -LiteralPath $AppPath).Path
+    $hasWebConfig = Test-Path -LiteralPath (Join-Path $backendDir "web.config")
+    $hasDll = @(Get-ChildItem -LiteralPath $backendDir -Filter "*.dll" -File -ErrorAction SilentlyContinue).Count -gt 0
+    if (-not $hasWebConfig -and -not $hasDll) {
+        throw "AppPath '$backendDir' khong giong publish ASP.NET Core (thieu web.config hoac *.dll)."
+    }
+} else {
+    $backendDir = switch ($BackendVariant) {
+        "redis"          { Join-Path $pub "backend-redis" }
+        "inmemory"       { Join-Path $pub "backend-inmemory" }
+        "login-redis"    { Join-Path $pub "backend-login-redis" }
+        "login-inmemory" { Join-Path $pub "backend-login-inmemory" }
+    }
+    if (-not (Test-Path $backendDir)) {
+        throw "Chua publish (thieu '$backendDir'). Chay menu 1 (publish.ps1) truoc."
+    }
 }
 
-Write-Host ">> Cap quyen doc cho IIS_IUSRS tren: $pub"
-icacls $pub /grant "*S-1-5-32-568:(OI)(CI)RX" /T /C | Out-Null
+# Cap quyen IIS_IUSRS tren thu muc can doc (lab publish hoac AppPath ngoai).
+$aclRoot = if ($useExternal) { $backendDir } else { $pub }
+Write-Host ">> Cap quyen doc cho IIS_IUSRS tren: $aclRoot"
+icacls $aclRoot /grant "*S-1-5-32-568:(OI)(CI)RX" /T /C | Out-Null
 
 function New-AppSite {
     param($Name,$Ip,$Port,$PhysicalPath,[hashtable]$EnvVars)
@@ -55,7 +75,11 @@ function New-AppSite {
     Write-Host "   [ok] $Name -> $Ip`:$Port  ($PhysicalPath)"
 }
 
-Write-Host ">> Backend variant: $BackendVariant  ($backendDir) | Bind: $Bind"
+if ($useExternal) {
+    Write-Host ">> Mode=external AppPath=$backendDir | Bind: $Bind"
+} else {
+    Write-Host ">> Mode=demo BackendVariant=$BackendVariant ($backendDir) | Bind: $Bind"
+}
 New-AppSite -Name "node1" -Ip $Bind -Port $Port1 -PhysicalPath $backendDir -EnvVars @{ NodeName="node1"; ASPNETCORE_ENVIRONMENT=$EnvName }
 New-AppSite -Name "node2" -Ip $Bind -Port $Port2 -PhysicalPath $backendDir -EnvVars @{ NodeName="node2"; ASPNETCORE_ENVIRONMENT=$EnvName }
 
@@ -73,6 +97,12 @@ Write-Host "   node1 -> http://$ipHint`:$Port1/"
 Write-Host "   node2 -> http://$ipHint`:$Port2/"
 Write-Host ""
 Write-Host "   >> Buoc tiep theo (TREN MAY DAT LB), chay:"
-Write-Host "      setup-lb.ps1 -Node1 http://$ipHint`:$Port1/ -Node2 http://$ipHint`:$Port2/"
-if ($BackendVariant -like "*redis*") { Write-Host "   Redis: theo appsettings.$EnvName.json (vd 199.30.30.91:6380). Dam bao node toi duoc." }
+if ($useExternal) {
+    Write-Host "      setup-lb.ps1 -Node1 http://$ipHint`:$Port1/ -Node2 http://$ipHint`:$Port2/ -Mode Affinity"
+} else {
+    Write-Host "      setup-lb.ps1 -Node1 http://$ipHint`:$Port1/ -Node2 http://$ipHint`:$Port2/"
+}
+if (-not $useExternal -and $BackendVariant -like "*redis*") {
+    Write-Host "   Redis: theo appsettings.$EnvName.json (vd 199.30.30.91:6380). Dam bao node toi duoc."
+}
 if ($Bind -eq "*") { Write-Host "   Luu y: neu server sau NAT/cloud, mo them Security Group/inbound cho port $Port1, $Port2." }

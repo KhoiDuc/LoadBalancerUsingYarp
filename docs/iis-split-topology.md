@@ -38,7 +38,41 @@ Menu 8 se hoi IP server roi tu dien vao. Hoac chay tay:
 - Them `-Https` neu muon self-signed HTTPS tren may local.
 - Truy cap LB: `http://localhost:5266`. Xem header `X-Served-By` de biet node nao phuc vu.
 
+## Dung voi app publish san (ngoai lab)
+
+Mot folder publish → **ca hai** node1 và node2 (khong tach 2 folder). Lab **khong** kiem tra / cau hinh Redis cua app ngoai.
+
+**Scenario 1 (1 may)** — menu **3**, nhap AppPath (Enter trong = demo lab):
+
+```text
+dotnet publish YourApp -c Release -o D:\Publish\ClientPaymentPortal
+iis-setup.bat → 1 (can publish\lb) → 3 → AppPath = D:\Publish\ClientPaymentPortal
+```
+
+Hoac PowerShell:
+
+```powershell
+.\iis-run.ps1 setup-iis-server.ps1 -AppPath D:\Publish\ClientPaymentPortal
+```
+
+Khi co `-AppPath`, LB tu bat **Affinity** (sticky cookie) — an toan khi chua biet app co share session/DataProtection hay khong.
+
+**Scenario 3** — menu **7** (+ AppPath) tren server, menu **8** tren may LB: chon Mode **Affinity** (Enter = Stateless cho demo).
+
+```powershell
+# Tren server
+.\iis-run.ps1 setup-nodes.ps1 -AppPath D:\Publish\ClientPaymentPortal -OpenFirewall
+# Tren may LB
+.\iis-run.ps1 setup-lb.ps1 -Node1 http://199.30.30.91:5001/ -Node2 http://199.30.30.91:5002/ -Mode Affinity
+```
+
+Luu y:
+
+1. App that thuong khong in `NodeName` tren UI — xem header **`X-Served-By`** (LB gan).
+2. Muon **Stateless** that su ma khong mat dang nhap → app phai tu share state (Redis / DataProtection chung, …), hoac truyen `-Mode Stateless` co chu dich.
+3. Neu portal kiem `AllowedHosts` chat, YARP forward Host goc — co the can noi cau hinh phia portal.
+
 ## Ghi chu
 - `setup-nodes.ps1` va `setup-lb.ps1` deu xai lai App Pool "No Managed Code", cap quyen IIS_IUSRS, va `cleanup-iis.ps1` (menu 5) van xoa duoc node1/node2/yarp-lb nhu cu.
-- Ban redis: dam bao ca node lan (neu can) LB toi duoc Redis theo `appsettings.Production.json`.
+- Ban redis (demo lab): dam bao ca node lan (neu can) LB toi duoc Redis theo `appsettings.Production.json`.
 - Scenario 2 (node o may local, LB o server) da bo qua vi may local thuong sau NAT, server khong goi nguoc ve duoc neu khong co VPN/tunnel/port-forward.

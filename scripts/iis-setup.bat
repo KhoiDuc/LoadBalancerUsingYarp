@@ -2,28 +2,55 @@
 setlocal EnableDelayedExpansion
 cd /d "%~dp0"
 set "BACKEND=redis"
+
 :menu
 cls
-echo ==================================================
-echo    YARP LB Lab - IIS setup
-echo ==================================================
-echo    Backend dang chon: %BACKEND%
-echo --------------------------------------------------
-echo    1. Publish tat ca project (dotnet publish)
-echo    2. Setup IIS LOCAL   (YARP LB, self-signed HTTPS)
-echo    3. Setup IIS SERVER  (all-in-one: LB+node1+node2)  [scenario 1]
-echo    4. Setup IIS ARR     (LB bang IIS ARR de so sanh)
-echo    5. Cleanup (xoa site/pool/farm)
-echo    6. Doi backend variant
-echo    9. Cleanup logs (xoa scripts\iis-setup-*.log)
-echo --------------------------------------------------
-echo    Scenario 3 (node o server, LB o may khac):
-echo    7. Setup NODES only  (chay TREN SERVER, mo ra ngoai)
-echo    8. Setup LB only     (chay TREN MAY LB, tro toi server)
-echo --------------------------------------------------
-echo    0. Thoat
+echo ==============================================================================
+echo                      YARP LOAD BALANCER LAB - IIS SETUP
+echo ==============================================================================
+echo  [Trang thai] Kich ban backend demo dang chon: [%BACKEND%]
+echo ==============================================================================
+echo  --- NHOM 1: MO HINH 1 MAY (LB + CAC NODE CHAY CHUNG) ---
 echo.
-set /p choice="Chon (0-9): "
+echo    1. Publish tat ca cac project
+echo       ^> Y nghia: Build va dong goi 5 project sang thu muc ./publish
+echo       ^> Khi nao dung: Chay lan dau tien hoac sau khi sua code C# trong src.
+echo.
+echo    2. Setup IIS LOCAL (Lab test nhanh tren may ca nhan)
+echo       ^> Y nghia: Tao site node1 (5001), node2 (5002) va LB (5266 kem HTTPS test)
+echo       ^> Khi nao dung: Muon xem hoat dong tren IIS may ca nhan.
+echo.
+echo    3. Setup IIS SERVER (Moi truong chuan - All-in-one) [KHUYEN NGHI]
+echo       ^> Y nghia: Tao 2 node (5001, 5002) va YARP LB (5266 mo ra ngoai).
+echo       ^> DAC BIET: Ho tro deploy APP NGOAI (nhap AppPath + tuy chon CLONE).
+echo.
+echo    4. Setup IIS ARR (Application Request Routing de so sanh)
+echo       ^> Y nghia: Dung Load Balancer truyen thong cua IIS thay cho YARP.
+echo.
+echo    5. Cleanup IIS
+echo       ^> Y nghia: Xoa sach website va App Pool (node1, node2, yarp-lb) khoi IIS.
+echo.
+echo    6. Doi kich ban demo (redis / inmemory / login-redis / login-inmemory)
+echo       ^> Y nghia: Chuyen giua test Session va test Login trong app demo.
+echo.
+echo  --- NHOM 2: MO HINH TACH BIET 2 MAY (SCENARIO 3) ---
+echo.
+echo    7. Setup NODES tren Server (Chi tao 2 node, khong tao LB)
+echo       ^> Y nghia: Chay tren may chu Backend, mo port 5001 va 5002 ra ngoai.
+echo       ^> DAC BIET: Ho tro deploy APP NGOAI (nhap AppPath + tuy chon CLONE).
+echo.
+echo    8. Setup LB tren may Gateway / May local
+echo       ^> Y nghia: Chay tren may dat Load Balancer, tro IP ve may server o muc 7.
+echo.
+echo  --- TIEN ICH KHAC ---
+echo.
+echo    9. Cleanup logs (Xoa cac file scripts\iis-setup-*.log)
+echo    A. AppDeploy Toolkit Hub (Mo menu D:\Projects\AppDeploy de build/publish/deploy)
+echo    E. Run External App (Chay app ngoai voi YARP LB bang dotnet CLI - Khong can IIS)
+echo    0. Thoat
+echo ==============================================================================
+echo.
+set /p choice="Nhap lua chon cua ban (0-9, A, E): "
 
 if "%choice%"=="1" ( call :run publish.ps1 & goto menu )
 if "%choice%"=="2" ( call :runAdmin setup-iis-local.ps1 -BackendVariant %BACKEND% -Https & goto menu )
@@ -34,36 +61,89 @@ if "%choice%"=="6" ( call :pickBackend & goto menu )
 if "%choice%"=="7" ( call :setupNodes & goto menu )
 if "%choice%"=="8" ( call :setupLbRemote & goto menu )
 if "%choice%"=="9" ( call :cleanupLogs & goto menu )
+if /i "%choice%"=="A" ( call :openAppDeploy & goto menu )
+if /i "%choice%"=="E" ( call :runExternal & goto menu )
 if "%choice%"=="0" ( exit /b )
 goto menu
 
+:openAppDeploy
+cls
+echo ==============================================================================
+echo                      MO APPDEPLOY TOOLKIT HUB
+echo ==============================================================================
+if exist "%~dp0..\..\AppDeploy\run.bat" (
+    call "%~dp0..\..\AppDeploy\run.bat"
+) else if exist "D:\Projects\AppDeploy\run.bat" (
+    call "D:\Projects\AppDeploy\run.bat"
+) else (
+    echo [ERROR] Khong tim thay AppDeploy toolkit tai D:\Projects\AppDeploy\run.bat!
+    pause
+)
+exit /b
+
+:runExternal
+cls
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0run-external.ps1"
+pause
+exit /b
+
 :pickBackend
 echo.
-echo    a. redis            (session + DataProtection tren Redis)
-echo    b. inmemory         (state in-memory tung node)
-echo    c. login-redis      (demo login, key dung chung Redis)
-echo    d. login-inmemory   (demo login, key rieng tung node)
-set /p b="Chon backend (a-d): "
+echo ------------------------------------------------------------------------------
+echo  CHON BIEN THE BACKEND DEMO:
+echo    a. redis            : Session + DataProtection chung tren Redis (giu state)
+echo    b. inmemory         : Session rieng tung node (nhay node bi lech session)
+echo    c. login-redis      : Demo Login co Redis (doi node VAN GIU DANG NHAP)
+echo    d. login-inmemory   : Demo Login khong Redis (doi node BI VANG DANG NHAP)
+echo    e. signalr-redis    : Chat Realtime co Redis Backplane (nhan tin xuyen suot)
+echo    f. signalr-inmemory : Chat Realtime khong Backplane (khac node khong nhan duoc)
+echo    g. upload-shared    : File Upload dung Shared Folder (anh hien thi tren moi node)
+echo    h. upload-local     : File Upload dung o dia local (doi node anh bi loi 404)
+echo ------------------------------------------------------------------------------
+set /p b="Chon backend (a-h): "
 if /i "%b%"=="a" set "BACKEND=redis"
 if /i "%b%"=="b" set "BACKEND=inmemory"
 if /i "%b%"=="c" set "BACKEND=login-redis"
 if /i "%b%"=="d" set "BACKEND=login-inmemory"
+if /i "%b%"=="e" set "BACKEND=signalr-redis"
+if /i "%b%"=="f" set "BACKEND=signalr-inmemory"
+if /i "%b%"=="g" set "BACKEND=upload-shared"
+if /i "%b%"=="h" set "BACKEND=upload-local"
 exit /b
 
 :askAppPath
-echo.
-echo    AppPath = folder publish app NGOAI lab (vd D:\Publish\ClientPaymentPortal).
-echo    Enter trong = dung demo lab (BackendVariant=%BACKEND%).
 set "APPPATH="
-set /p APPPATH="AppPath: "
+set "CLONE_FLAG="
+if exist "%~dp0.selected_app.tmp" del "%~dp0.selected_app.tmp"
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0pick-app.ps1"
+if exist "%~dp0.selected_app.tmp" (
+    set /p APPPATH=<"%~dp0.selected_app.tmp"
+    del "%~dp0.selected_app.tmp"
+)
+if "!APPPATH!"=="" exit /b
+
+echo.
+echo  Ban co muon CLONE ra 2 folder rieng (_node1 va _node2) khong?
+echo    [1] CO - Clone ra 2 folder (KHUYEN NGHI: Tranh loi xung dot file log, cache)
+echo    [2] KHONG - Dung chung 1 folder goc (Tiet kiem o cung)
+set "CLONE_OPT=1"
+set /p CLONE_OPT="Chon [1 hoac 2, Enter = 1]: "
+if "!CLONE_OPT!"=="2" (
+    set "CLONE_FLAG="
+) else (
+    set "CLONE_FLAG=-CloneFolders"
+)
 exit /b
 
 :askLbMode
-REM Enter = Affinity (an toan cho app ngoai). Go Stateless de test round-robin / nhay node.
 echo.
-echo    Mode LB: Enter = Affinity ^(sticky, mac dinh app ngoai^). Go Stateless de refresh nhay node.
+echo ------------------------------------------------------------------------------
+echo  CHON CHE DO LOAD BALANCER:
+echo    - Affinity  (Sticky Session): Moi user 'dinh' chat 1 node (AN TOAN cho app ngoai)
+echo    - Stateless (Round-Robin)   : Chia deu request lu luan chuyen giua node1 va node2
+echo.
 set "LBMODE="
-set /p LBMODE="Mode [Affinity/Stateless]: "
+set /p LBMODE=">> Nhap Mode [Enter = Affinity / hoac go Stateless]: "
 if /i "!LBMODE!"=="Stateless" ( set "LBMODE=Stateless" ) else ( set "LBMODE=Affinity" )
 exit /b
 
@@ -73,7 +153,7 @@ if "!APPPATH!"=="" (
     call :runAdmin setup-iis-server.ps1 -BackendVariant %BACKEND%
 ) else (
     call :askLbMode
-    call :runAdmin setup-iis-server.ps1 -AppPath "!APPPATH!" -Mode !LBMODE!
+    call :runAdmin setup-iis-server.ps1 -AppPath "!APPPATH!" !CLONE_FLAG! -Mode !LBMODE!
 )
 exit /b
 
@@ -82,24 +162,21 @@ call :askAppPath
 if "!APPPATH!"=="" (
     call :runAdmin setup-nodes.ps1 -BackendVariant %BACKEND% -OpenFirewall
 ) else (
-    call :runAdmin setup-nodes.ps1 -AppPath "!APPPATH!" -OpenFirewall
+    call :askLbMode
+    call :runAdmin setup-nodes.ps1 -AppPath "!APPPATH!" !CLONE_FLAG! -OpenFirewall
 )
 exit /b
 
 :setupLbRemote
 echo.
-echo    Nhap IP/host cua SERVER dang chay node1/node2 (vd 199.30.30.91).
-set /p srv="Server host: "
+echo ------------------------------------------------------------------------------
+echo  CAU HINH LOAD BALANCER REMOTE
+echo ------------------------------------------------------------------------------
+echo  Nhap IP/host cua SERVER dang chay node1/node2 (vd 199.30.30.91).
+set /p srv=">> Server host: "
 if "%srv%"=="" ( echo Chua nhap host. & exit /b )
-echo.
-echo    Mode LB: Enter = Stateless ^(demo^). Go Affinity neu nodes la app publish ngoai.
-set "LBMODE="
-set /p LBMODE="Mode [Stateless/Affinity]: "
-if /i "!LBMODE!"=="Affinity" (
-    call :runAdmin setup-lb.ps1 -Node1 http://%srv%:5001/ -Node2 http://%srv%:5002/ -Mode Affinity
-) else (
-    call :runAdmin setup-lb.ps1 -Node1 http://%srv%:5001/ -Node2 http://%srv%:5002/ -Mode Stateless
-)
+call :askLbMode
+call :runAdmin setup-lb.ps1 -Node1 http://%srv%:5001/ -Node2 http://%srv%:5002/ -Mode !LBMODE!
 exit /b
 
 :cleanupLogs
@@ -126,7 +203,5 @@ pause
 exit /b
 
 :runAdmin
-REM Goi qua iis-run.ps1: no tu elevate (UAC), giu cua so + hien loi + ghi log.
-REM %1 = ten script; %2..%9 = tham so. (Trong subroutine, %%* la args cua .bat goc — KHONG dung.)
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0iis-run.ps1" %1 %2 %3 %4 %5 %6 %7 %8 %9
 exit /b

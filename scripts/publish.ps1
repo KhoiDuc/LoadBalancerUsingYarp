@@ -16,11 +16,15 @@ function Invoke-Publish($proj, $dir) {
 Write-Host ">> Clean $out"
 if (Test-Path $out) { Remove-Item $out -Recurse -Force }
 
-Invoke-Publish "src/LoadBalancer"              "$out/lb"                    # YARP reverse proxy (LB)
-Invoke-Publish "src/Backend.InMemory"          "$out/backend-inmemory"      # state in-memory tung node
-Invoke-Publish "src/Backend.Redis"             "$out/backend-redis"         # session + DataProtection tren Redis
-Invoke-Publish "src/Backend.SimpleLogin.InMemory" "$out/backend-login-inmemory" # demo login: key rieng tung node
-Invoke-Publish "src/Backend.SimpleLogin.Redis"    "$out/backend-login-redis"    # demo login: key dung chung Redis
+Invoke-Publish "src/LoadBalancer"                 "$out/lb"                       # YARP reverse proxy (LB)
+Invoke-Publish "src/Backend.InMemory"             "$out/backend-inmemory"         # state in-memory tung node
+Invoke-Publish "src/Backend.Redis"                "$out/backend-redis"            # session + DataProtection tren Redis
+Invoke-Publish "src/Backend.SimpleLogin.InMemory" "$out/backend-login-inmemory"    # demo login: key rieng tung node
+Invoke-Publish "src/Backend.SimpleLogin.Redis"       "$out/backend-login-redis"       # demo login: key dung chung Redis
+Invoke-Publish "src/Backend.SignalR.InMemory"     "$out/backend-signalr-inmemory" # demo SignalR khong backplane
+Invoke-Publish "src/Backend.SignalR.Redis"        "$out/backend-signalr-redis"    # demo SignalR co Redis backplane
+Invoke-Publish "src/Backend.FileUpload.Local"     "$out/backend-upload-local"     # demo upload o dia rieng
+Invoke-Publish "src/Backend.FileUpload.Shared"    "$out/backend-upload-shared"    # demo upload thu muc dung chung
 
 Write-Host ""
 Write-Host ">> Xong. Output: $out"

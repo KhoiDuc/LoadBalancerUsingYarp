@@ -3,20 +3,17 @@ using Yarp.ReverseProxy.Configuration;
 namespace LoadBalancer;
 
 /// <summary>
-/// Chon 1 trong 2 luong bang setting "LoadBalancer:Mode" luc runtime:
-///   - "Stateless" (mac dinh): RoundRobin, KHONG affinity.
-///   - "Affinity": RoundRobin + sticky cookie -> moi user "dinh" 1 node.
-/// Doi gia tri trong appsettings.json se HOT-RELOAD (khong can restart).
+/// Ap dung thuat toan Load Balancing va che do Session Affinity dong luc runtime.
+/// Khi LbState thay doi, SignalConfigurationProvider kich hoat reload de YARP cap nhat tuc thi.
 /// </summary>
-public sealed class LoadBalancerModeConfigFilter(IConfiguration config) : IProxyConfigFilter
+public sealed class LoadBalancerModeConfigFilter(LbState state) : IProxyConfigFilter
 {
     public ValueTask<ClusterConfig> ConfigureClusterAsync(ClusterConfig cluster, CancellationToken cancel)
     {
-        var mode = config["LoadBalancer:Mode"] ?? "Stateless";
+        // Thuat toan duoc chon (RoundRobin, LeastRequests, Random, PowerOfTwoChoices)
+        cluster = cluster with { LoadBalancingPolicy = state.Algorithm };
 
-        cluster = cluster with { LoadBalancingPolicy = "RoundRobin" };
-
-        if (string.Equals(mode, "Affinity", StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(state.Mode, "Affinity", StringComparison.OrdinalIgnoreCase))
         {
             cluster = cluster with
             {
@@ -29,7 +26,6 @@ public sealed class LoadBalancerModeConfigFilter(IConfiguration config) : IProxy
                     Cookie = new SessionAffinityCookieConfig
                     {
                         HttpOnly = true,
-                        // Demo chay http -> SameAsRequest. Production nen dung Always.
                         SecurePolicy = CookieSecurePolicy.SameAsRequest
                     }
                 }

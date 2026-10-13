@@ -119,7 +119,7 @@ app.Run();
 static string HomePage(string node, int refreshSeconds, bool authed, string name,
     string loginAt, string loginNode, string variantLabel)
 {
-    var refreshMeta = refreshSeconds > 0 ? $"<meta http-equiv=\"refresh\" content=\"{refreshSeconds}\">" : "";
+    var refreshMeta = refreshSeconds > 0 ? $"<meta http-equiv=\"refresh\" content=\"{refreshSeconds + 1}\">" : "";
     var bg = authed ? "#16a34a" : "#b91c1c";
     var status = authed ? "DANG DANG NHAP" : "CHUA DANG NHAP (tren node nay)";
     var action = authed
@@ -130,6 +130,9 @@ static string HomePage(string node, int refreshSeconds, bool authed, string name
           + $"<tr><td class='k'>Login luc</td><td>{loginAt}</td></tr>"
           + $"<tr><td class='k'>Login tai node</td><td>{loginNode}</td></tr>"
         : "<tr><td colspan='2'>Node nay khong doc duoc cookie dang nhap.</td></tr>";
+    var countdownHtml = refreshSeconds > 0
+        ? $"<div class=\"countdown-badge\">Tu refresh sau: <span id=\"countdown\">{refreshSeconds}</span>s</div>"
+        : "<div class=\"countdown-badge\">Auto-refresh: TAT</div>";
     return $$"""
 <!doctype html>
 <html lang="vi">
@@ -146,8 +149,10 @@ static string HomePage(string node, int refreshSeconds, bool authed, string name
     table { margin:0 auto 14px; border-collapse:collapse; font-size:14px; }
     td { padding:4px 12px; text-align:left; }
     td.k { opacity:.75; }
+    .countdown-badge { display:inline-block; background:rgba(0,0,0,.35); padding:6px 16px; border-radius:20px; font-size:13px; font-weight:600; margin-top:10px; border:1px solid rgba(255,255,255,.2); }
+    .countdown-badge span { color:#fde047; font-size:16px; font-weight:700; }
     .btn { display:inline-block; margin-top:6px; padding:8px 20px; border-radius:8px; background:#fff; color:#111; text-decoration:none; font-weight:600; }
-    .hint { opacity:.8; margin-top:16px; font-size:12px; max-width:360px; }
+    .hint { opacity:.8; margin-top:14px; font-size:12px; max-width:360px; }
   </style>
 </head>
 <body>
@@ -157,8 +162,24 @@ static string HomePage(string node, int refreshSeconds, bool authed, string name
     <div class="status">{{status}}</div>
     <table>{{rows}}</table>
     <div>{{action}}</div>
+    {{countdownHtml}}
     <p class="hint">Trang tu refresh -> LB doi node1/node2. Key chia se qua Redis nen ca 2 node deu bao "DANG dang nhap".</p>
   </div>
+  <script>
+    (function () {
+      var sec = {{refreshSeconds}};
+      if (sec <= 0) return;
+      var el = document.getElementById('countdown');
+      var timer = setInterval(function () {
+        sec--;
+        if (el) el.textContent = Math.max(0, sec);
+        if (sec <= 0) {
+          clearInterval(timer);
+          location.reload();
+        }
+      }, 1000);
+    })();
+  </script>
 </body>
 </html>
 """;
@@ -166,11 +187,11 @@ static string HomePage(string node, int refreshSeconds, bool authed, string name
 
 static string LoginPage(string node, int refreshSeconds, string? error)
 {
-    var refreshMeta = refreshSeconds > 0 ? $"<meta http-equiv=\"refresh\" content=\"{refreshSeconds}\">" : "";
+    var refreshMeta = refreshSeconds > 0 ? $"<meta http-equiv=\"refresh\" content=\"{refreshSeconds + 1}\">" : "";
     var errHtml = error is null ? "" : $"<p class='err'>{error}</p>";
     var nodeColor = node.Contains("1") ? "#2563eb" : "#16a34a";
     var refreshHint = refreshSeconds > 0
-        ? $"Trang tu refresh moi {refreshSeconds}s -> LB doi node (form van giu gia tri)."
+        ? $"Tu refresh sau: <b id=\"countdown\" style=\"color:#60a5fa;\">{refreshSeconds}</b>s (form van giu gia tri)."
         : "Auto-refresh TAT (Ui:RefreshSeconds=0).";
     return $$"""
 <!doctype html>
@@ -202,6 +223,18 @@ static string LoginPage(string node, int refreshSeconds, string? error)
   </form>
   <script>
     (function () {
+      var sec = {{refreshSeconds}};
+      if (sec > 0) {
+        var el = document.getElementById('countdown');
+        var timer = setInterval(function () {
+          sec--;
+          if (el) el.textContent = Math.max(0, sec);
+          if (sec <= 0) {
+            clearInterval(timer);
+            location.reload();
+          }
+        }, 1000);
+      }
       var u = document.getElementById('username');
       var p = document.getElementById('password');
       try {

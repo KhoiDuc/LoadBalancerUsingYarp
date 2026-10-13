@@ -24,6 +24,10 @@
 - **src/Backend.Redis**: backend demo, session + DataProtection tren Redis (fix van de).
 - **src/Backend.SimpleLogin.InMemory**: demo LOGIN, DataProtection key rieng tung node -> mat login khi doi node.
 - **src/Backend.SimpleLogin.Redis**: demo LOGIN, DataProtection key dung chung Redis -> giu login khi doi node.
+- **src/Backend.SignalR.InMemory**: demo REALTIME CHAT, SignalR khong backplane -> khac node khong nhan duoc tin.
+- **src/Backend.SignalR.Redis**: demo REALTIME CHAT, SignalR co Redis Backplane -> moi node deu nhan duoc tin.
+- **src/Backend.FileUpload.Local**: demo FILE UPLOAD, luu file local tung node -> doi node bi loi 404.
+- **src/Backend.FileUpload.Shared**: demo FILE UPLOAD, luu file vao thu muc dung chung -> ca 2 node deu doc duoc.
 
 ## Luong request
 1. Client goi LB (5266).

@@ -7,9 +7,11 @@
 #   - LB mac dinh Affinity (tru khi truyen -Mode). Chi can publish\lb + AppPath.
 [CmdletBinding()]
 param(
-    [ValidateSet("redis","inmemory","login-redis","login-inmemory")]
+    [ValidateSet("redis","inmemory","login-redis","login-inmemory","signalr-inmemory","signalr-redis","upload-local","upload-shared")]
     [string]$BackendVariant = "redis",
-    [string]$AppPath = "",             # Folder publish app that (dung chung cho node1+node2)
+    [string]$AppPath = "",             # Folder publish app that (dung chung hoac clone cho node1+node2)
+    [string]$App = "",                 # Alias app tu AppDeploy (portal, gateway, portal-webclient...)
+    [switch]$CloneFolders,             # Clone ra 2 folder node1 va node2 rieng de tranh xung dot lock file/log
     [string]$Mode = "",                # De trong = auto: Affinity neu AppPath, else Stateless (appsettings)
     [string]$EnvName = "Production",
     [string]$HostName = "",            # vd: lb.example.com. De trong = binding theo port thuan.
@@ -19,6 +21,29 @@ param(
 )
 $ErrorActionPreference = "Stop"
 Import-Module WebAdministration
+
+. (Join-Path $PSScriptRoot "lib-appdeploy.ps1")
+if (-not [string]::IsNullOrWhiteSpace($App)) {
+    $matchedTarget = Resolve-AppDeployTarget -NameOrKey $App
+    if ($matchedTarget) {
+        $AppPath = $matchedTarget.PublishPath
+        if (-not $matchedTarget.IsPublished) {
+            Write-Host ">> [AppDeploy] App '$($matchedTarget.Display)' chua duoc publish. Bat dau publish..." -ForegroundColor Yellow
+            $pubOk = Invoke-AppDeployPublishTarget -Target $matchedTarget
+            if (-not $pubOk) { throw "Publish that bai!" }
+        }
+    }
+} elseif (-not [string]::IsNullOrWhiteSpace($AppPath)) {
+    $matchedTarget = Resolve-AppDeployTarget -NameOrKey $AppPath
+    if ($matchedTarget) {
+        $AppPath = $matchedTarget.PublishPath
+        if (-not $matchedTarget.IsPublished) {
+            Write-Host ">> [AppDeploy] App '$($matchedTarget.Display)' chua duoc publish. Bat dau publish..." -ForegroundColor Yellow
+            $pubOk = Invoke-AppDeployPublishTarget -Target $matchedTarget
+            if (-not $pubOk) { throw "Publish that bai!" }
+        }
+    }
+}
 
 $root = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $pub  = Join-Path $root "publish"
@@ -39,24 +64,50 @@ if ($useExternal) {
     if (-not $hasWebConfig -and -not $hasDll) {
         throw "AppPath '$backendDir' khong giong publish ASP.NET Core (thieu web.config hoac *.dll)."
     }
+
+    if ($CloneFolders) {
+        $trimmedPath = $backendDir.TrimEnd('\', '/')
+        $dir1 = "$trimmedPath-node1"
+        $dir2 = "$trimmedPath-node2"
+        Write-Host ">> [CloneFolders] Sao chep thu muc sang 2 node rieng biet de tranh xung dot lock file/log:"
+        Write-Host "   Node 1: $dir1"
+        Write-Host "   Node 2: $dir2"
+        if (-not (Test-Path $dir1)) { New-Item -ItemType Directory -Path $dir1 | Out-Null }
+        if (-not (Test-Path $dir2)) { New-Item -ItemType Directory -Path $dir2 | Out-Null }
+        robocopy $backendDir $dir1 /E /R:1 /W:1 /NFL /NDL /NJH /NJS | Out-Null
+        robocopy $backendDir $dir2 /E /R:1 /W:1 /NFL /NDL /NJH /NJS | Out-Null
+    } else {
+        $dir1 = $backendDir
+        $dir2 = $backendDir
+    }
 } else {
     $backendDir = switch ($BackendVariant) {
-        "redis"          { Join-Path $pub "backend-redis" }
-        "inmemory"       { Join-Path $pub "backend-inmemory" }
-        "login-redis"    { Join-Path $pub "backend-login-redis" }
-        "login-inmemory" { Join-Path $pub "backend-login-inmemory" }
+        "redis"            { Join-Path $pub "backend-redis" }
+        "inmemory"         { Join-Path $pub "backend-inmemory" }
+        "login-redis"      { Join-Path $pub "backend-login-redis" }
+        "login-inmemory"   { Join-Path $pub "backend-login-inmemory" }
+        "signalr-inmemory" { Join-Path $pub "backend-signalr-inmemory" }
+        "signalr-redis"    { Join-Path $pub "backend-signalr-redis" }
+        "upload-local"     { Join-Path $pub "backend-upload-local" }
+        "upload-shared"    { Join-Path $pub "backend-upload-shared" }
     }
     if (-not (Test-Path $backendDir)) {
         throw "Chua publish (thieu '$backendDir'). Chay menu 1 (publish.ps1) truoc."
     }
+    $dir1 = $backendDir
+    $dir2 = $backendDir
 }
 
 # Cap quyen doc cho IIS_IUSRS (fix HTTP 500.19 / 0x80070005). SID *S-1-5-32-568 = IIS_IUSRS.
 Write-Host ">> Cap quyen doc cho IIS_IUSRS tren: $pub"
 icacls $pub /grant "*S-1-5-32-568:(OI)(CI)RX" /T /C | Out-Null
 if ($useExternal) {
-    Write-Host ">> Cap quyen doc cho IIS_IUSRS tren: $backendDir"
-    icacls $backendDir /grant "*S-1-5-32-568:(OI)(CI)RX" /T /C | Out-Null
+    Write-Host ">> Cap quyen doc cho IIS_IUSRS tren: $dir1"
+    icacls $dir1 /grant "*S-1-5-32-568:(OI)(CI)RX" /T /C | Out-Null
+    if ($dir2 -ne $dir1) {
+        Write-Host ">> Cap quyen doc cho IIS_IUSRS tren: $dir2"
+        icacls $dir2 /grant "*S-1-5-32-568:(OI)(CI)RX" /T /C | Out-Null
+    }
 }
 
 # Mode: AppPath -> Affinity mac dinh; demo -> khong set (giu Stateless trong appsettings) neu Mode trong.
@@ -96,18 +147,22 @@ function New-AppSite {
 }
 
 if ($useExternal) {
-    Write-Host ">> Mode=external AppPath=$backendDir"
+    Write-Host ">> Mode=external (Node1: $dir1 | Node2: $dir2)"
 } else {
     Write-Host ">> Mode=demo BackendVariant=$BackendVariant ($backendDir)"
 }
 Write-Host ">> Tao cac site (backend chi lang nghe 127.0.0.1)..."
-New-AppSite -Name "node1"   -Ip "127.0.0.1" -Port 5001 -PhysicalPath $backendDir -EnvVars @{ NodeName="node1"; ASPNETCORE_ENVIRONMENT=$EnvName }
-New-AppSite -Name "node2"   -Ip "127.0.0.1" -Port 5002 -PhysicalPath $backendDir -EnvVars @{ NodeName="node2"; ASPNETCORE_ENVIRONMENT=$EnvName }
+New-AppSite -Name "node1"   -Ip "127.0.0.1" -Port 5001 -PhysicalPath $dir1 -EnvVars @{ NodeName="node1"; ASPNETCORE_ENVIRONMENT=$EnvName }
+New-AppSite -Name "node2"   -Ip "127.0.0.1" -Port 5002 -PhysicalPath $dir2 -EnvVars @{ NodeName="node2"; ASPNETCORE_ENVIRONMENT=$EnvName }
 
 $lbEnv = @{ ASPNETCORE_ENVIRONMENT = $EnvName }
 if (-not [string]::IsNullOrWhiteSpace($effectiveMode)) {
     $lbEnv["LoadBalancer__Mode"] = $effectiveMode
     Write-Host ">> LB LoadBalancer__Mode=$effectiveMode"
+}
+if ($useExternal) {
+    # App ngoai khong chac co endpoint /health -> tat active health check de tranh YARP danh dau dead sau 2 lan fail
+    $lbEnv["ReverseProxy__Clusters__demo__HealthCheck__Active__Enabled"] = "false"
 }
 New-AppSite -Name "yarp-lb" -Ip "*" -Port 5266 -PhysicalPath $lbDir -EnvVars $lbEnv
 
@@ -134,7 +189,9 @@ iisreset /noforce | Out-Null
 Write-Host ""
 Write-Host ">> Xong. LB: http://<server>:5266  (tren chinh server: http://localhost:5266)"
 if ($useExternal) {
-    Write-Host "   AppPath: $backendDir | Env: $EnvName | LB Mode: $(if ($effectiveMode) { $effectiveMode } else { 'Stateless (appsettings)' })"
+    Write-Host "   Node1 PhysicalPath: $dir1"
+    Write-Host "   Node2 PhysicalPath: $dir2"
+    Write-Host "   Env: $EnvName | LB Mode: $(if ($effectiveMode) { $effectiveMode } else { 'Stateless (appsettings)' })"
 } else {
     Write-Host "   Backend variant: $BackendVariant | Env: $EnvName"
     if ($BackendVariant -like "*redis*") { Write-Host "   Redis: 199.30.30.91:6380 (theo appsettings.Production.json). Dam bao server toi duoc." }

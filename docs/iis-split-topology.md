@@ -40,19 +40,30 @@ Menu 8 se hoi IP server roi tu dien vao. Hoac chay tay:
 
 ## Dung voi app publish san (ngoai lab)
 
-Mot folder publish → **ca hai** node1 và node2 (khong tach 2 folder). Lab **khong** kiem tra / cau hinh Redis cua app ngoai.
+Ho tro 2 kieu thu muc:
+1. **Clone ra 2 folder rieng (`_node1` va `_node2`)** (Khuyen nghi): Tranh xung dot khoa file (file lock) khi app ghi log hoac cache cuc bo.
+2. **Dung chung 1 folder**: Nhanh, tiet kiem o cung neu app hoan toan stateless va khong ghi file cuc bo.
 
+### A) Chay nhanh bang dotnet (KHONG CAN IIS)
+Chay truc tiep bang script CLI:
+```bat
+.\scripts\run-external.bat
+```
+Script se hoi duong dan `AppPath`, tuy chon Clone folder va che do LB (`Affinity` hay `Stateless`).
+
+### B) Trien khai tren IIS
 **Scenario 1 (1 may)** — menu **3**, nhap AppPath (Enter trong = demo lab):
 
 ```text
 dotnet publish YourApp -c Release -o D:\Publish\ClientPaymentPortal
 iis-setup.bat → 1 (can publish\lb) → 3 → AppPath = D:\Publish\ClientPaymentPortal
+(Chon 1 de tu dong Clone ra ClientPaymentPortal-node1 va ClientPaymentPortal-node2)
 ```
 
 Hoac PowerShell:
 
 ```powershell
-.\iis-run.ps1 setup-iis-server.ps1 -AppPath D:\Publish\ClientPaymentPortal
+.\iis-run.ps1 setup-iis-server.ps1 -AppPath D:\Publish\ClientPaymentPortal -CloneFolders
 ```
 
 Khi co `-AppPath`, LB tu bat **Affinity** (sticky cookie) — an toan khi chua biet app co share session/DataProtection hay khong.

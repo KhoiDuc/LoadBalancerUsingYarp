@@ -24,10 +24,17 @@ function Stop-Backends {
     }
 }
 
+. (Join-Path $PSScriptRoot "lib-ngrok.ps1")
+$ngrokInfo = Ask-NgrokOption -Port 5266
+
 try {
     Start-Sleep -Seconds 4
     Write-Host ">> Load Balancer -> http://localhost:5266  (Ctrl+C de dung LB + backends)"
+    if ($ngrokInfo -and $ngrokInfo.Url) {
+        Write-Host ">> Public Ngrok   -> $($ngrokInfo.Url)" -ForegroundColor Green
+    }
     dotnet run --project src/LoadBalancer --no-launch-profile -- --urls http://localhost:5266
 } finally {
     Stop-Backends
+    Stop-NgrokTunnel $ngrokInfo
 }

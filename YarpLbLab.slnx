@@ -4,4 +4,8 @@
   <Project Path="src/Backend.Redis/Backend.Redis.csproj" />
   <Project Path="src/Backend.SimpleLogin.InMemory/Backend.SimpleLogin.InMemory.csproj" />
   <Project Path="src/Backend.SimpleLogin.Redis/Backend.SimpleLogin.Redis.csproj" />
+  <Project Path="src/Backend.SignalR.InMemory/Backend.SignalR.InMemory.csproj" />
+  <Project Path="src/Backend.SignalR.Redis/Backend.SignalR.Redis.csproj" />
+  <Project Path="src/Backend.FileUpload.Local/Backend.FileUpload.Local.csproj" />
+  <Project Path="src/Backend.FileUpload.Shared/Backend.FileUpload.Shared.csproj" />
 </Solution>

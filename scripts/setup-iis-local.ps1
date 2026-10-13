@@ -3,7 +3,7 @@
 # Env = Development -> backend doc appsettings.json (Redis 127.0.0.1:6380 neu la ban redis).
 [CmdletBinding()]
 param(
-    [ValidateSet("redis","inmemory","login-redis","login-inmemory")]
+    [ValidateSet("redis","inmemory","login-redis","login-inmemory","signalr-inmemory","signalr-redis","upload-local","upload-shared")]
     [string]$BackendVariant = "redis",
     [string]$EnvName = "Development",
     [switch]$Https,
@@ -16,10 +16,14 @@ $root = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $pub  = Join-Path $root "publish"
 $lbDir = Join-Path $pub "lb"
 $backendDir = switch ($BackendVariant) {
-    "redis"          { Join-Path $pub "backend-redis" }
-    "inmemory"       { Join-Path $pub "backend-inmemory" }
-    "login-redis"    { Join-Path $pub "backend-login-redis" }
-    "login-inmemory" { Join-Path $pub "backend-login-inmemory" }
+    "redis"            { Join-Path $pub "backend-redis" }
+    "inmemory"         { Join-Path $pub "backend-inmemory" }
+    "login-redis"      { Join-Path $pub "backend-login-redis" }
+    "login-inmemory"   { Join-Path $pub "backend-login-inmemory" }
+    "signalr-inmemory" { Join-Path $pub "backend-signalr-inmemory" }
+    "signalr-redis"    { Join-Path $pub "backend-signalr-redis" }
+    "upload-local"     { Join-Path $pub "backend-upload-local" }
+    "upload-shared"    { Join-Path $pub "backend-upload-shared" }
 }
 
 if (-not (Test-Path $lbDir) -or -not (Test-Path $backendDir)) {

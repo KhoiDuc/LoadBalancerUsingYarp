@@ -11,9 +11,11 @@
 # ============================================================================
 [CmdletBinding()]
 param(
-    [ValidateSet("redis","inmemory","login-redis","login-inmemory")]
+    [ValidateSet("redis","inmemory","login-redis","login-inmemory","signalr-inmemory","signalr-redis","upload-local","upload-shared")]
     [string]$BackendVariant = "redis",
-    [string]$AppPath = "",           # Folder publish app that (dung chung cho node1+node2)
+    [string]$AppPath = "",           # Folder publish app that (dung chung hoac clone cho node1+node2)
+    [string]$App = "",               # Alias app tu AppDeploy (portal, gateway, portal-webclient...)
+    [switch]$CloneFolders,           # Clone ra 2 folder node1 va node2 rieng de tranh xung dot lock file/log
     [string]$EnvName = "Production",
     [string]$Bind = "*",          # "*" = cho may khac goi toi (scenario 3). "127.0.0.1" = chi noi bo.
     [int]$Port1 = 5001,
@@ -22,6 +24,29 @@ param(
 )
 $ErrorActionPreference = "Stop"
 Import-Module WebAdministration
+
+. (Join-Path $PSScriptRoot "lib-appdeploy.ps1")
+if (-not [string]::IsNullOrWhiteSpace($App)) {
+    $matchedTarget = Resolve-AppDeployTarget -NameOrKey $App
+    if ($matchedTarget) {
+        $AppPath = $matchedTarget.PublishPath
+        if (-not $matchedTarget.IsPublished) {
+            Write-Host ">> [AppDeploy] App '$($matchedTarget.Display)' chua duoc publish. Bat dau publish..." -ForegroundColor Yellow
+            $pubOk = Invoke-AppDeployPublishTarget -Target $matchedTarget
+            if (-not $pubOk) { throw "Publish that bai!" }
+        }
+    }
+} elseif (-not [string]::IsNullOrWhiteSpace($AppPath)) {
+    $matchedTarget = Resolve-AppDeployTarget -NameOrKey $AppPath
+    if ($matchedTarget) {
+        $AppPath = $matchedTarget.PublishPath
+        if (-not $matchedTarget.IsPublished) {
+            Write-Host ">> [AppDeploy] App '$($matchedTarget.Display)' chua duoc publish. Bat dau publish..." -ForegroundColor Yellow
+            $pubOk = Invoke-AppDeployPublishTarget -Target $matchedTarget
+            if (-not $pubOk) { throw "Publish that bai!" }
+        }
+    }
+}
 
 $root = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $pub  = Join-Path $root "publish"
@@ -37,22 +62,52 @@ if ($useExternal) {
     if (-not $hasWebConfig -and -not $hasDll) {
         throw "AppPath '$backendDir' khong giong publish ASP.NET Core (thieu web.config hoac *.dll)."
     }
+
+    if ($CloneFolders) {
+        $trimmedPath = $backendDir.TrimEnd('\', '/')
+        $dir1 = "$trimmedPath-node1"
+        $dir2 = "$trimmedPath-node2"
+        Write-Host ">> [CloneFolders] Sao chep thu muc sang 2 node rieng biet de tranh xung dot lock file/log:"
+        Write-Host "   Node 1: $dir1"
+        Write-Host "   Node 2: $dir2"
+        if (-not (Test-Path $dir1)) { New-Item -ItemType Directory -Path $dir1 | Out-Null }
+        if (-not (Test-Path $dir2)) { New-Item -ItemType Directory -Path $dir2 | Out-Null }
+        robocopy $backendDir $dir1 /E /R:1 /W:1 /NFL /NDL /NJH /NJS | Out-Null
+        robocopy $backendDir $dir2 /E /R:1 /W:1 /NFL /NDL /NJH /NJS | Out-Null
+    } else {
+        $dir1 = $backendDir
+        $dir2 = $backendDir
+    }
 } else {
     $backendDir = switch ($BackendVariant) {
-        "redis"          { Join-Path $pub "backend-redis" }
-        "inmemory"       { Join-Path $pub "backend-inmemory" }
-        "login-redis"    { Join-Path $pub "backend-login-redis" }
-        "login-inmemory" { Join-Path $pub "backend-login-inmemory" }
+        "redis"            { Join-Path $pub "backend-redis" }
+        "inmemory"         { Join-Path $pub "backend-inmemory" }
+        "login-redis"      { Join-Path $pub "backend-login-redis" }
+        "login-inmemory"   { Join-Path $pub "backend-login-inmemory" }
+        "signalr-inmemory" { Join-Path $pub "backend-signalr-inmemory" }
+        "signalr-redis"    { Join-Path $pub "backend-signalr-redis" }
+        "upload-local"     { Join-Path $pub "backend-upload-local" }
+        "upload-shared"    { Join-Path $pub "backend-upload-shared" }
     }
     if (-not (Test-Path $backendDir)) {
         throw "Chua publish (thieu '$backendDir'). Chay menu 1 (publish.ps1) truoc."
     }
+    $dir1 = $backendDir
+    $dir2 = $backendDir
 }
 
 # Cap quyen IIS_IUSRS tren thu muc can doc (lab publish hoac AppPath ngoai).
-$aclRoot = if ($useExternal) { $backendDir } else { $pub }
-Write-Host ">> Cap quyen doc cho IIS_IUSRS tren: $aclRoot"
-icacls $aclRoot /grant "*S-1-5-32-568:(OI)(CI)RX" /T /C | Out-Null
+if ($useExternal) {
+    Write-Host ">> Cap quyen doc cho IIS_IUSRS tren: $dir1"
+    icacls $dir1 /grant "*S-1-5-32-568:(OI)(CI)RX" /T /C | Out-Null
+    if ($dir2 -ne $dir1) {
+        Write-Host ">> Cap quyen doc cho IIS_IUSRS tren: $dir2"
+        icacls $dir2 /grant "*S-1-5-32-568:(OI)(CI)RX" /T /C | Out-Null
+    }
+} else {
+    Write-Host ">> Cap quyen doc cho IIS_IUSRS tren: $pub"
+    icacls $pub /grant "*S-1-5-32-568:(OI)(CI)RX" /T /C | Out-Null
+}
 
 function New-AppSite {
     param($Name,$Ip,$Port,$PhysicalPath,[hashtable]$EnvVars)
@@ -76,12 +131,12 @@ function New-AppSite {
 }
 
 if ($useExternal) {
-    Write-Host ">> Mode=external AppPath=$backendDir | Bind: $Bind"
+    Write-Host ">> Mode=external (Node1: $dir1 | Node2: $dir2) | Bind: $Bind"
 } else {
     Write-Host ">> Mode=demo BackendVariant=$BackendVariant ($backendDir) | Bind: $Bind"
 }
-New-AppSite -Name "node1" -Ip $Bind -Port $Port1 -PhysicalPath $backendDir -EnvVars @{ NodeName="node1"; ASPNETCORE_ENVIRONMENT=$EnvName }
-New-AppSite -Name "node2" -Ip $Bind -Port $Port2 -PhysicalPath $backendDir -EnvVars @{ NodeName="node2"; ASPNETCORE_ENVIRONMENT=$EnvName }
+New-AppSite -Name "node1" -Ip $Bind -Port $Port1 -PhysicalPath $dir1 -EnvVars @{ NodeName="node1"; ASPNETCORE_ENVIRONMENT=$EnvName }
+New-AppSite -Name "node2" -Ip $Bind -Port $Port2 -PhysicalPath $dir2 -EnvVars @{ NodeName="node2"; ASPNETCORE_ENVIRONMENT=$EnvName }
 
 if ($OpenFirewall) {
     New-NetFirewallRule -DisplayName "yarp node1 $Port1" -Direction Inbound -Protocol TCP -LocalPort $Port1 -Action Allow -ErrorAction SilentlyContinue | Out-Null
@@ -93,8 +148,8 @@ iisreset /noforce | Out-Null
 $ipHint = if ($Bind -eq "*") { "<IP-cua-may-nay>" } else { $Bind }
 Write-Host ""
 Write-Host ">> Xong. Node da san sang cho LB (o may khac) goi toi:"
-Write-Host "   node1 -> http://$ipHint`:$Port1/"
-Write-Host "   node2 -> http://$ipHint`:$Port2/"
+Write-Host "   node1 -> http://$ipHint`:$Port1/  ($dir1)"
+Write-Host "   node2 -> http://$ipHint`:$Port2/  ($dir2)"
 Write-Host ""
 Write-Host "   >> Buoc tiep theo (TREN MAY DAT LB), chay:"
 if ($useExternal) {
